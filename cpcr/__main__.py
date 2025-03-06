@@ -35,10 +35,10 @@ from tqdm import tqdm
 from gtfparse import read_gtf
 from numpy import nan
 import pandas as pd
-from pcr.fasta import parse_genome
-from pcr.primer import design_primer_pair, mark_primer_duplicates
-from pcr.primer_blast import create_blast_database, primer_blast
-from pcr.utils import init_logging
+from cpcr.fasta import parse_genome
+from cpcr.primer import design_primer_pair, mark_primer_duplicates
+from cpcr.primer_blast import create_blast_database, primer_blast
+from cpcr.utils import init_logging
 
 def parse_args():
     """Parse command line arguments.
@@ -93,7 +93,6 @@ def parse_args():
                         help      = "BLAST database name.")
     parser.add_argument("-d", "--blastdb_dir",
                         type      = str,
-                        required  = True,
                         default   = "./blastdb",
                         help      = "BLAST database directory.")
 
@@ -117,7 +116,6 @@ def parse_args():
     # Primer design parameters
     parser.add_argument("--preset",
                         type      = str,
-                        required  = True,
                         default   = None,
                         choices   = ["qPCR_putative", "qPCR_rnaseq",
                                      "sPCR_gencode", "sPCR_rnaseq"],
