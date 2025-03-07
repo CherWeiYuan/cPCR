@@ -826,7 +826,8 @@ def main():
     
     # Filter to top primer only
     top_primer_df = primer_df.sort_values(
-        by = ["gene_name", "chrom", "start", "end", "off_target_count", "num_amplicons"],
+        by = ["gene_name", "chrom", "start", "end", 
+              "off_target_count", "num_amplicons", "product_size"],
         ascending = True
         )
     top_primer_df.drop_duplicates(
