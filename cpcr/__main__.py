@@ -35,6 +35,8 @@ from tqdm import tqdm
 from gtfparse import read_gtf
 from numpy import nan
 import pandas as pd
+from rich_argparse import RichHelpFormatter
+
 from cpcr.fasta import parse_genome
 from cpcr.primer import design_primer_pair, mark_primer_duplicates
 from cpcr.primer_blast import create_blast_database, primer_blast
@@ -49,7 +51,7 @@ def parse_args():
 
     # Create parent parser with common arguments
     parser = ArgumentParser(description     = description,
-                                   formatter_class = RawTextHelpFormatter)
+                            formatter_class = RichHelpFormatter)
     
     # User input parameters
     parser.add_argument("-c", "--target_exons_csv",
@@ -61,7 +63,7 @@ def parse_args():
                             "chrom (each row with 'chr', e.g. \n"         +\
                             "chromosome 1 will be chr1), \n"              +\
                             "start, end, strand ('+'/ '-') and \n"        +\
-                            "exon_type ('poison_exon'/ 'canonical'. \n"   +\
+                            "exon_type ('noncanonical'/ 'canonical'. \n"   +\
                             "Poison exons will be added the MANE GTF \n"  +\
                             "while the canonical exons will determine \n" +\
                             "which MANE exon is the target exon.")
@@ -110,22 +112,18 @@ def parse_args():
     parser.add_argument("-e", "--polymerase",
                         type      = str,
                         default   = "dreamtaq",
-                        choices   = ["dreamtaq"],
-                        help      = "Polymerase type. Used to calculate Tm.")
+                        choices   = ["dreamtaq", "others"],
+                        help      = "Polymerase type. Used to calculate Tm. \n" +\
+                                    "Dreamtaq formula is When others are used,")
     
     # Primer design parameters
-    parser.add_argument("--preset",
-                        type      = str,
-                        default   = None,
-                        choices   = ["qPCR_putative", "qPCR_rnaseq",
-                                     "sPCR_gencode", "sPCR_rnaseq"],
-                        help      = "Preset parameters for qPCR or splicing PCR \n" +\
-                                    "(sPCR).")
+    parser.add_argument("--preset_parameters",
+                        action   = "store_true",
+                        help     = "Use preset parameters for qPCR or splicing PCR.")
     parser.add_argument("--design_mode",
                         type      = str,
                         default   = "qPCR",
-                        choices   = ["qPCR", "splicing_pcr",
-                                     "sPCR_gencode", "sPCR_rnaseq"],
+                        choices   = ["qPCR", "splicingPCR"],
                         help      = "qPCR (one primer on target exon, \n"  +\
                                     "the other on a constitutive exon) \n" +\
                                     "or splicing PCR design (primers \n"   +\
@@ -262,14 +260,8 @@ def main():
     """
     Main function for the primer design algorithm
     """
-    logging.info(Fore.GREEN + "INITIALIZE PCR DESIGN" + Style.RESET_ALL)
-    
     args = parse_args()
-    
-    # Log version
-    version = 1.00
-    logging.info(Fore.RED + f"Primer Design {version}" + Style.RESET_ALL)
-    
+
     # User parameters
     target_exons_csv = args.target_exons_csv
     genome_fasta    = args.genome_fasta
@@ -279,7 +271,7 @@ def main():
     blast_db_name    = args.blast_db_name
     blastdb_dir      = args.blastdb_dir
 
-    preset      = args.preset
+    preset_parameters = args.preset_parameters
     polymerase  = args.polymerase
     design_mode = args.design_mode
     
@@ -315,15 +307,17 @@ def main():
     delete_xml = args.delete_xml
     threads = args.threads
     
-    # Init logging
-    init_logging(outdir, args, silent = False)
-    
     # Make output directory
     makedirs(outdir, exist_ok = True)
     makedirs(blastdb_dir, exist_ok = True)
+    
+    # Init logging
+    init_logging(outdir, args, silent = False)
+    logging.info(Fore.GREEN + "INITIALIZE PCR DESIGN" + Style.RESET_ALL)
+    version = 1.00
+    logging.info(Fore.RED + f"Primer Design {version}" + Style.RESET_ALL)
 
-    if preset == "qPCR_putative" or preset == "qPCR_rnaseq":
-        design_mode = "qPCR"
+    if design_mode == "qPCR" and preset_parameters:
         amplicon_min_size = 70
         amplicon_opt_size = 150
         amplicon_max_size = 250
@@ -344,8 +338,7 @@ def main():
         primer_gc_max = 60
         sanger_void = 0
 
-    elif preset == "sPCR_gencode":
-        design_mode = "splicing_pcr"
+    elif design_mode == "splicingPCR" and preset_parameters:
         amplicon_min_size = 100
         amplicon_opt_size = 500
         amplicon_max_size = 2000
@@ -392,9 +385,9 @@ def main():
                      Style.RESET_ALL)
         gene_name = target_exon_input_df.loc[t_index, "gene_name"]
         exon_type = target_exon_input_df.loc[t_index, "exon_type"]
-        if exon_type not in ["poison_exon", "canonical"]:
+        if exon_type not in ["noncanonical", "canonical"]:
             sys.exit(Fore.RED + f"Error: Exon type in CSV ({exon_type}) " +
-                     "is not 'poison_exon' or 'canonical'" + Style.RESET_ALL)
+                     "is not 'noncanonical' or 'canonical'" + Style.RESET_ALL)
     
         target_exon_list.append(
             {"gene_name" : gene_name, 
@@ -407,7 +400,6 @@ def main():
 
     # Make output directory
     makedirs(outdir, exist_ok = True)
-    makedirs(f"{outdir}/pcr_temp", exist_ok = True)
     makedirs(blastdb_dir, exist_ok = True)
 
     # Create BLAST database if not done
@@ -653,14 +645,14 @@ def main():
         # ==========     ==========     =====Target exon=====     ==========
         #                                                           <-----
         # Note: Ignore strand because primers will be designed on both strands
-        elif design_mode == "splicing_pcr":
+        elif design_mode == "splicingPCR":
             # Process MANE exon GTF with information from target exon
-            if target_exon["exon_type"] == "poison_exon":
+            if target_exon["exon_type"] == "noncanonical":
                 # Create dataframe for target exon
                 target_exon_df = pd.DataFrame(
                     [[target_exon["chrom"], target_exon["start"], 
                       target_exon["end"], target_exon["strand"],
-                      "poison_exon", 0]],
+                      "noncanonical", 0]],
                     columns = ["seqname", "start", "end", "strand", "EXON_TYPE",
                                "constitutive"]
                     )
@@ -702,7 +694,7 @@ def main():
                 
                 # No primer should be designed on non-constitutive exons
                 if not constitutive and exon_type not in [
-                        "poison_exon", "canonical"]:
+                        "noncanonical", "canonical"]:
                     excluded_regions.append([current_pos, len(new_seq)])
                 else:
                     pass
@@ -712,7 +704,7 @@ def main():
                 excluded_regions.append([current_pos + len(new_seq) - 1, 2])
                 
                 # Avoid primer design on the target exon
-                if exon_type in ["poison_exon", "canonical"]:
+                if exon_type in ["noncanonical", "canonical"]:
                     primer3_sequence_target.append([current_pos, len(new_seq)])
                     
                     # Leave space before and after target exons for Sanger's seq
@@ -816,7 +808,7 @@ def main():
 #                              "product_size" : None,
 #                              "comments"     : "High off-target count control"}))
 # =============================================================================
-    
+
         primer_df_list.append(
             primer_blast(primer_sets, gene_name, target_exon,
                          total_mismatches_threshold, last_n_mismatches_threshold,
@@ -828,7 +820,8 @@ def main():
         pbar.update()
     
     # Compile information into dataframe and export
-    primer_df = pd.concat(primer_df_list, axis = 0, ignore_index = True)
+    primer_df = pd.concat([x for x in primer_df_list if len(x) != 0],
+                          axis = 0, ignore_index = True)
     primer_df.to_csv(f"{outdir}/{prefix}.full.tsv", sep = "\t", index = False)
     
     # Filter to top primer only

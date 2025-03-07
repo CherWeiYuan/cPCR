@@ -32,4 +32,3 @@ def init_logging(out, args, silent=False):
 
     logging.getLogger("tensorflow").setLevel(logging.ERROR)
     logging.info(f"Input arguments: {args}")
-    #logging.info("Command line: %s", " ".join(sys.argv))
