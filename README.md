@@ -18,7 +18,7 @@ pip install -e .
 # How it works?
 The algorithm designs PCR primers on constitutive exons (defined as at least 80% of the GTF's transcript having the exon or otherwise specified by --constitutive_threshold) using the genome fasta and genome GTF specified by the user (recommended to use GENCODE files) via the primer3 algorithm.
 
-A Primer-BLAST-like algorithm is written to check the primers designed for off-target binding and the creation of rogue amplicons.
+A set of BLAST functions is written to check the primers designed for off-target binding and the creation of rogue amplicons. Primer off-target binding is defined as the default in NCBI's Primer-BLAST: "Primer must have at least 2 total mismatches to unintended targets, including at least 2 mismatches within the last 5 bps at the 3' end.  Ignore targets that have 6 or more mismatches to the primer."
 
 The algorithm works in two modes: qPCR and splicing PCR. The former, qPCR, design primers on the target exon and a flanking constitutive exon. The latter, splicing PCR, design primers on exons flanking the target exon.
 
