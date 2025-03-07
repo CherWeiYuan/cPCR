@@ -1,0 +1,5 @@
+gene_name,chrom,start,end,strand,exon_type
+SNRPB,chr20,2467190,2467315,+,noncanonical
+SRSF6,chr20,43459151,43459420,+,noncanonical
+SRSF3,chr6,36599819,36600276,+,noncanonical
+

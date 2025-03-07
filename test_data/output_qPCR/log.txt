@@ -1,0 +1,20 @@
+2025-03-07T14:29:52+0800 INFO - Input arguments: Namespace(target_exons_csv='/home/cwy/Desktop/cpcr//test_data/csv/target_exons.csv', genome_fasta='./genome/GRCh38.p14.genome.fasta', gtf_file='./genome/gencode.v47.annotation.gtf', off_target_fasta='./transcriptome/gencode.v47.transcripts.fasta', blast_db_name='gencode.v47.transcripts', blastdb_dir='./blastdb', filter_low_evidence_transcripts=False, constitutive_threshold=0.9, polymerase='dreamtaq', preset_parameters=True, design_mode='qPCR', amplicon_min_size=70, amplicon_opt_size=150, amplicon_max_size=250, primer_min_size=18, primer_opt_size=20, primer_max_size=24, primer_min_tm=58, primer_opt_tm=60, primer_max_tm=62, max_primer_tm_diff=1.0, primer_gc_min=50, primer_gc_opt=55, primer_gc_max=60, adjust_amplicon_size=False, adjust_amplicon_size_threshold=80, adjust_min_amplicon_size=55, adjust_opt_amplicon_size=100, adjust_max_amplicon_size=200, sanger_void=30, total_mismatches_threshold=2, last_n_mismatches_threshold=2, delete_xml=True, threads=4, outdir='/home/cwy/Desktop/cpcr//trial/output_qPCR', prefix='qPCR')
+2025-03-07T14:29:52+0800 INFO - [32mINITIALIZE PCR DESIGN[0m
+2025-03-07T14:29:52+0800 INFO - [31mPrimer Design 1.0[0m
+2025-03-07T14:29:52+0800 INFO - [32mLoading genome sequence[0m
+2025-03-07T14:29:55+0800 INFO - [32mLoading GTF[0m
+2025-03-07T14:30:20+0800 INFO - Extracted GTF attributes: ['gene_id', 'gene_type', 'gene_name', 'level', 'tag', 'transcript_id', 'transcript_type', 'transcript_name', 'exon_number', 'exon_id', 'transcript_support_level', 'havana_transcript', 'hgnc_id', 'havana_gene', 'ont', 'protein_id', 'ccdsid', 'artif_dupl']
+2025-03-07T14:30:28+0800 INFO - [34mSNRPB FRONT[0m
+2025-03-07T14:30:28+0800 INFO - Designed primer sets:[32m5[0m
+2025-03-07T14:30:28+0800 INFO - [34mSNRPB BACK[0m
+2025-03-07T14:30:28+0800 INFO - Designed primer sets:[32m5[0m
+2025-03-07T14:30:33+0800 INFO - [34mSRSF6 FRONT[0m
+2025-03-07T14:30:33+0800 INFO - Designed primer sets:[32m5[0m
+2025-03-07T14:30:33+0800 INFO - [34mSRSF6 BACK[0m
+2025-03-07T14:30:33+0800 INFO - Designed primer sets:[32m5[0m
+2025-03-07T14:30:37+0800 INFO - [34mSRSF3 FRONT[0m
+2025-03-07T14:30:37+0800 INFO - Designed primer sets:[32m5[0m
+2025-03-07T14:30:37+0800 INFO - [34mSRSF3 BACK[0m
+2025-03-07T14:30:37+0800 INFO - Designed primer sets:[32m5[0m
+2025-03-07T14:30:41+0800 INFO - 
+Complete
