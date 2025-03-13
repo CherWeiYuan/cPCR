@@ -341,7 +341,7 @@ def main():
     elif design_mode == "splicingPCR" and preset_parameters:
         amplicon_min_size = 100
         amplicon_opt_size = 500
-        amplicon_max_size = 2000
+        amplicon_max_size = 1500
 
         adjust_amplicon_size = True
         adjust_amplicon_size_threshold = 80
@@ -360,7 +360,7 @@ def main():
     
         primer_gc_min = 40
         primer_gc_opt = 50
-        primer_gc_max = 60
+        primer_gc_max = 65
     
         sanger_void = 30
 
@@ -376,8 +376,10 @@ def main():
             sys.exit(Fore.RED + 
                      "Error: 'chr' is not found in CSV chromosome names" +
                      Style.RESET_ALL)
-        start  = int(target_exon_input_df.loc[t_index, "start"])
-        end    = int(target_exon_input_df.loc[t_index, "end"])
+        start  = int(min(target_exon_input_df.loc[t_index, "start"],
+                         target_exon_input_df.loc[t_index, "end"]))
+        end    = int(max(target_exon_input_df.loc[t_index, "start"],
+                         target_exon_input_df.loc[t_index, "end"]))
         strand = target_exon_input_df.loc[t_index, "strand"]
         if strand not in ["+", "-"]:
             sys.exit(Fore.RED + 
@@ -393,7 +395,7 @@ def main():
             {"gene_name" : gene_name, 
              "chrom"     : chrom, 
              "start"     : start, 
-             "end"       : end, 
+             "end"       : end,
              "strand"    : strand,
              "exon_type" : exon_type}
             )
@@ -461,7 +463,8 @@ def main():
             for tid in transcript_id_list:
                 transcript_df = gene_gtf.query(f"transcript_id == '{tid}'")
                 target_exon_present = len(
-                    transcript_df.query(f"start == {exon_start} and end == {exon_end}")
+                    transcript_df.query(
+                        f"start == {exon_start} and end == {exon_end}")
                     )
                 if target_exon_present:
                     constitutive_count += 1
@@ -469,23 +472,25 @@ def main():
                     pass
 
             # Update MANE exons dataframe
-            if constitutive_count/len(transcript_id_list) >= constitutive_threshold:
+            if constitutive_count/len(transcript_id_list) >= \
+                constitutive_threshold:
                 mane_exons_gtf.loc[index, "constitutive"] = 1
             else:
                 mane_exons_gtf.loc[index, "constitutive"] = 0
 
         # Account for genes that do not meet the constitutive threshold
         if mane_exons_gtf.constitutive.sum() == 0:
-            sys.exit(Fore.RED + 
-                     "Error: No MANE exon meets the constitutive threshold" +
-                     Style.RESET_ALL)
+            logging.warning(
+                Fore.YELLOW + 
+                "Warning: No MANE exon meets the constitutive threshold." +
+                Style.RESET_ALL)
     
         if design_mode == "qPCR":
-            # Front set
-            #                        ----->
-            # ==========     =====Target exon=====     ==========     ==========
-            #                                            <-----         <-----
-            # Note: Ignore strand because primers will be designed on both strands
+        # Front set
+        #         ----->
+        # =====Target exon=====     ==========     ==========
+        #                             <-----         <-----
+        # Note: Ignore strand because primers will be designed on both strands
             
             # Assemble sequence where the target exon is the first exon
             front_exons_gtf = mane_exons_gtf.query(f"start > {target_exon['end']}")
@@ -498,12 +503,14 @@ def main():
             ok_regions = []
             for fp_index, _ in front_exons_gtf.iterrows():
                 chrom = front_exons_gtf.loc[fp_index, "seqname"]
-                start = front_exons_gtf.loc[fp_index, "start"]
-                end   = front_exons_gtf.loc[fp_index, "end"]
+                start = min(front_exons_gtf.loc[fp_index, "start"],
+                            front_exons_gtf.loc[fp_index, "end"])
+                end   = max(front_exons_gtf.loc[fp_index, "start"],
+                            front_exons_gtf.loc[fp_index, "end"])
                 new_seq = genome_dict[chrom][start - 1: end]
                 
                 front_seq += new_seq
-                constitutive = front_exons_gtf.loc[fp_index, "constitutive"]
+                constitutive = int(front_exons_gtf.loc[fp_index, "constitutive"])
                 
                 # Find ok_regions
                 if constitutive:
@@ -516,129 +523,154 @@ def main():
                 current_pos += len(new_seq)
                 
             # Design front primers
-            primers_set1 = design_primer_pair(
-                front_seq, ok_regions, "", "",
-                amplicon_min_size, amplicon_opt_size, amplicon_max_size,
-                primer_min_size, primer_opt_size, primer_max_size,
-                primer_min_tm, primer_opt_tm, primer_max_tm,
-                primer_gc_min, primer_gc_opt, primer_gc_max, max_primer_tm_diff)
+            if len(ok_regions) > 0:
+                primers_set1 = design_primer_pair(
+                    front_seq, ok_regions, "", "",
+                    amplicon_min_size, amplicon_opt_size, amplicon_max_size,
+                    primer_min_size, primer_opt_size, primer_max_size,
+                    primer_min_tm, primer_opt_tm, primer_max_tm,
+                    primer_gc_min, primer_gc_opt, primer_gc_max, max_primer_tm_diff)
+                
+                logging.info(Fore.BLUE + f"{gene_name} FRONT" + Style.RESET_ALL)
+                logging.info("Designed primer sets:" + Fore.GREEN + 
+                             f"{primers_set1['PRIMER_PAIR_NUM_RETURNED']}" + Style.RESET_ALL)
+                if primers_set1['PRIMER_PAIR_NUM_RETURNED'] == 0:
+                    logging.info(f"Primer left explanation: {primers_set1['PRIMER_LEFT_EXPLAIN']}")
+                    logging.info(f"Primer right explanation: {primers_set1['PRIMER_RIGHT_EXPLAIN']}")
+                    logging.info(f"Primer pair explanation: {primers_set1['PRIMER_PAIR_EXPLAIN']}\n")
+                else:
+                    pass
+            else:
+                primers_set1 = None
+                logging.warning(
+                    Fore.YELLOW + 
+                    f"Warning: No constitutive regions selected " +
+                    "for right primer design." + Style.RESET_ALL)
             
             # Reset variables
             front_exons_gtf, target_exon_seq, front_seq = None, None, None
             current_pos, left_ok_regions, right_region, ok_regions = None, None, None, None
 
-            logging.info(Fore.BLUE + f"{gene_name} FRONT" + Style.RESET_ALL)
-            logging.info("Designed primer sets:" + Fore.GREEN + 
-                  f"{primers_set1['PRIMER_PAIR_NUM_RETURNED']}" + Style.RESET_ALL)
-            if primers_set1['PRIMER_PAIR_NUM_RETURNED'] == 0:
-                logging.info(f"Primer left explanation: {primers_set1['PRIMER_LEFT_EXPLAIN']}")
-                logging.info(f"Primer right explanation: {primers_set1['PRIMER_RIGHT_EXPLAIN']}")
-                logging.info(f"Primer pair explanation: {primers_set1['PRIMER_PAIR_EXPLAIN']}\n")
-            else:
-                pass
-    
-            # Back set
-            #   ---->          ---->                                      
-            # ==========     ==========     =====Target exon=====     ==========
-            #                                      <-----
-            # Note: Ignore strand because primers will be designed on both strands
+        # Back set
+        #   ---->          ---->                                      
+        # ==========     ==========     =====Target exon=====
+        #                                      <-----
+        # Note: Ignore strand because primers will be designed on both strands
             
             # Assemble sequence where the target exon is the last exon
             back_exons_gtf = mane_exons_gtf.query(f"end < {target_exon['start']}")
-            
+
             # Get target exon sequence
             target_exon_seq = genome_dict[target_exon['chrom']][
                 target_exon['start'] - 1: target_exon['end']]
             
             back_seq = ""
-            
+
             current_pos = 0
             left_ok_regions = []
             for bp_index, _ in back_exons_gtf.iterrows():
                 chrom = back_exons_gtf.loc[bp_index, "seqname"]
-                start = back_exons_gtf.loc[bp_index, "start"]
-                end   = back_exons_gtf.loc[bp_index, "end"]
+                start = min(back_exons_gtf.loc[bp_index, "start"],
+                            back_exons_gtf.loc[bp_index, "end"])
+                end   = max(back_exons_gtf.loc[bp_index, "start"],
+                            back_exons_gtf.loc[bp_index, "end"])
                 new_seq = genome_dict[chrom][start - 1: end]
             
                 back_seq += new_seq
-                constitutive = back_exons_gtf.loc[bp_index, "constitutive"]
+                constitutive = int(back_exons_gtf.loc[bp_index, "constitutive"])
             
                 # Find ok_regions
                 if constitutive:
                     left_ok_regions.append([current_pos, len(new_seq)])
                 else:
                     pass
-            
+
                 current_pos += len(new_seq)
-        
+
             right_region = [current_pos, len(target_exon_seq)]
             ok_regions   = []
             for left_region in left_ok_regions:
-                ok_regions.append(left_region + right_region)
-        
+                # If left_region is an empty list, avoid creating a new
+                # ok_region
+                if len(left_region) > 0:
+                    ok_regions.append(left_region + right_region)
+                else:
+                    pass
+            
             # Add target exon as the last exon
             back_seq += target_exon_seq
     
             # Design back primers
-            primers_set2 = design_primer_pair(
-                back_seq, ok_regions, "", "",
-                amplicon_min_size, amplicon_opt_size, amplicon_max_size,
-                primer_min_size, primer_opt_size, primer_max_size,
-                primer_min_tm, primer_opt_tm, primer_max_tm,
-                primer_gc_min, primer_gc_opt, primer_gc_max, max_primer_tm_diff)
-            
+            if len(ok_regions) > 0:
+                primers_set2 = design_primer_pair(
+                    back_seq, ok_regions, "", "",
+                    amplicon_min_size, amplicon_opt_size, amplicon_max_size,
+                    primer_min_size, primer_opt_size, primer_max_size,
+                    primer_min_tm, primer_opt_tm, primer_max_tm,
+                    primer_gc_min, primer_gc_opt, primer_gc_max, max_primer_tm_diff)
+                logging.info(Fore.BLUE + f"{gene_name} BACK" + Style.RESET_ALL)
+                logging.info("Designed primer sets:" + Fore.GREEN + 
+                             f"{primers_set2['PRIMER_PAIR_NUM_RETURNED']}" + Style.RESET_ALL)
+                if primers_set2['PRIMER_PAIR_NUM_RETURNED'] == 0:
+                    logging.info(f"Primer left explanation: {primers_set2['PRIMER_LEFT_EXPLAIN']}")
+                    logging.info(f"Primer right explanation: {primers_set2['PRIMER_RIGHT_EXPLAIN']}")
+                    logging.info(f"Primer pair explanation: {primers_set2['PRIMER_PAIR_EXPLAIN']}\n")
+                else:
+                    pass
+            else:
+                primers_set2 = None
+                logging.warning(
+                    Fore.YELLOW + 
+                    f"Warning: No constitutive regions selected " +
+                    "for left primer design." + Style.RESET_ALL)
+
             # Reset variables
             back_exons_gtf, target_exon_seq, back_seq = None, None, None
             current_pos, left_ok_regions, right_region, ok_regions = None, None, None, None
     
-            logging.info(Fore.BLUE + f"{gene_name} BACK" + Style.RESET_ALL)
-            logging.info("Designed primer sets:" + Fore.GREEN + 
-                  f"{primers_set2['PRIMER_PAIR_NUM_RETURNED']}" + Style.RESET_ALL)
-            if primers_set2['PRIMER_PAIR_NUM_RETURNED'] == 0:
-                logging.info(f"Primer left explanation: {primers_set2['PRIMER_LEFT_EXPLAIN']}")
-                logging.info(f"Primer right explanation: {primers_set2['PRIMER_RIGHT_EXPLAIN']}")
-                logging.info(f"Primer pair explanation: {primers_set2['PRIMER_PAIR_EXPLAIN']}\n")
-            else:
-                pass
-    
             # Get primer pair candidates
             # --------------------------
             primer_pairs1 = []
-            count1 = 0
-            while True:
-                if f"PRIMER_LEFT_{count1}_SEQUENCE" in primers_set1 and \
-                   f"PRIMER_RIGHT_{count1}_SEQUENCE" in primers_set1:
-                    primer_pairs1.append(
-                        (primers_set1[f"PRIMER_LEFT_{count1}_SEQUENCE"],
-                         primers_set1[f"PRIMER_RIGHT_{count1}_SEQUENCE"],
-                         {"left_tm": primers_set1[f"PRIMER_LEFT_{count1}_TM"],
-                          "right_tm": primers_set1[f"PRIMER_RIGHT_{count1}_TM"],
-                          "product_size": primers_set1[f"PRIMER_PAIR_{count1}_PRODUCT_SIZE"],
-                          "comments": "First exon is target"
-                          }))
-                    count1 += 1
-                else:
-                    break
-                
-            primer_pairs2 = []
-            count2 = 0
-            while True:
-                if f"PRIMER_LEFT_{count2}_SEQUENCE" in primers_set2 and \
-                   f"PRIMER_RIGHT_{count2}_SEQUENCE" in primers_set2:
-                    primer_pairs2.append(
-                        (primers_set2[f"PRIMER_LEFT_{count2}_SEQUENCE"],
-                         primers_set2[f"PRIMER_RIGHT_{count2}_SEQUENCE"],
-                         {"left_tm": primers_set2[f"PRIMER_LEFT_{count2}_TM"],
-                          "right_tm": primers_set2[f"PRIMER_RIGHT_{count2}_TM"],
-                          "product_size": primers_set2[f"PRIMER_PAIR_{count2}_PRODUCT_SIZE"],
-                          "comments": "Last exon is the target"
-                          }))
-                    count2 += 1
-                else:
-                    break
-    
-            primer_sets = primer_pairs1 + primer_pairs2
+            if primers_set1 is not None:
+                count1 = 0
+                while True:
+                    if f"PRIMER_LEFT_{count1}_SEQUENCE" in primers_set1 and \
+                    f"PRIMER_RIGHT_{count1}_SEQUENCE" in primers_set1:
+                        primer_pairs1.append(
+                            (primers_set1[f"PRIMER_LEFT_{count1}_SEQUENCE"],
+                            primers_set1[f"PRIMER_RIGHT_{count1}_SEQUENCE"],
+                            {"left_tm": primers_set1[f"PRIMER_LEFT_{count1}_TM"],
+                            "right_tm": primers_set1[f"PRIMER_RIGHT_{count1}_TM"],
+                            "product_size": primers_set1[f"PRIMER_PAIR_{count1}_PRODUCT_SIZE"],
+                            "comments": "First exon is target"
+                            }))
+                        count1 += 1
+                    else:
+                        break
+            else:
+                pass
 
+            primer_pairs2 = []
+            if primers_set2 is not None:
+                count2 = 0
+                while True:
+                    if f"PRIMER_LEFT_{count2}_SEQUENCE" in primers_set2 and \
+                    f"PRIMER_RIGHT_{count2}_SEQUENCE" in primers_set2:
+                        primer_pairs2.append(
+                            (primers_set2[f"PRIMER_LEFT_{count2}_SEQUENCE"],
+                            primers_set2[f"PRIMER_RIGHT_{count2}_SEQUENCE"],
+                            {"left_tm": primers_set2[f"PRIMER_LEFT_{count2}_TM"],
+                            "right_tm": primers_set2[f"PRIMER_RIGHT_{count2}_TM"],
+                            "product_size": primers_set2[f"PRIMER_PAIR_{count2}_PRODUCT_SIZE"],
+                            "comments": "Last exon is the target"
+                            }))
+                        count2 += 1
+                    else:
+                        break
+            else:
+                pass
+
+            primer_sets = primer_pairs1 + primer_pairs2
 
         # Splicing PCR
         #                   ---->                                      
@@ -767,7 +799,7 @@ def main():
                 primer_min_size, primer_opt_size, primer_max_size,
                 primer_min_tm, primer_opt_tm, primer_max_tm,
                 primer_gc_min, primer_gc_opt, primer_gc_max, max_primer_tm_diff)
-    
+
             # Get primer sets
             primer_sets = []
             count = 0
@@ -809,21 +841,31 @@ def main():
 #                              "comments"     : "High off-target count control"}))
 # =============================================================================
 
-        primer_df_list.append(
-            primer_blast(primer_sets, gene_name, target_exon,
-                         total_mismatches_threshold, last_n_mismatches_threshold,
-                         amplicon_max_size, polymerase,
-                         blastdb_dir, blast_db_name, outdir,
-                         delete_xml, threads)
-            )
-        
+        if len(primer_sets) > 0:
+            primer_df_list.append(
+                primer_blast(primer_sets, gene_name, target_exon,
+                            total_mismatches_threshold, last_n_mismatches_threshold,
+                            amplicon_max_size, polymerase,
+                            blastdb_dir, blast_db_name, outdir,
+                            delete_xml, threads)
+                )
+        else:
+            pass
+
         pbar.update()
     
     # Compile information into dataframe and export
-    primer_df = pd.concat([x for x in primer_df_list if len(x) != 0],
-                          axis = 0, ignore_index = True)
-    primer_df.to_csv(f"{outdir}/{prefix}.full.tsv", sep = "\t", index = False)
-    
+    if len(primer_df_list) > 0:
+        primer_df = pd.concat([x for x in primer_df_list if len(x) != 0],
+                            axis = 0, ignore_index = True)
+        primer_df.to_csv(f"{outdir}/{prefix}.full.tsv", sep = "\t", index = False)
+    else:
+        logging.error(Fore.RED + 
+                      "Error: No primer is designed by primer3. Please adjust " +
+                      "primer design parameters to accomodate more primers." +
+                      Style.RESET_ALL)
+        sys.exit("Error")
+
     # Filter to top primer only
     top_primer_df = primer_df.sort_values(
         by = ["gene_name", "chrom", "start", "end", 

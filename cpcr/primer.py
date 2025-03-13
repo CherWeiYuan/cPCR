@@ -78,6 +78,8 @@ def design_primer_pair(template, ok_regions, target_regions, excluded_regions,
         'PRIMER_MIN_GC'   : primer_gc_min,
         'PRIMER_OPT_GC_PERCENT': primer_gc_opt,
         'PRIMER_MAX_GC'   : primer_gc_max,
+
+        'PRIMER_NUM_RETURN': 20
     }
 
     # Design primers
