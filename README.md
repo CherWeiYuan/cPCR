@@ -26,6 +26,7 @@ The algorithm works in two modes: qPCR and splicing PCR. The former, qPCR, desig
 The parameters of the algorithm can be found with cpcr --help.
 
 You must specify the following:
+
 [1] --target_exons_csv: A comma-separated file with 5 columns: chrom (name based on the GTF), start, end, strand (-/+) and exon_type (canonical/ noncanonical).
 Each row will represent a target exon's information. See "/test_data/csv/target_exons.csv" for an example.
 If the exon_type is canonical, the algorithm finds the exon(s) in the MANE transcript and mark it as a target exon.
