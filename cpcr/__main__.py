@@ -81,6 +81,12 @@ def parse_args():
                         default   = "genome/gencode.v47.annotation.gtf",
                         help      = "Path and name of the GTF file for \n " +\
                                     "for sequence extraction from genome_fasta.")
+    parser.add_argument("--custom_gtf_file",
+                        type      = str,
+                        required  = False,
+                        default   = None,
+                        help      = "[Optional] Path and name of the GTF file \n " +\
+                                    "of transcripts containing the target exon.")    
     parser.add_argument("-t", "--off_target_fasta",
                         type      = str,
                         required  = True,
@@ -166,7 +172,7 @@ def parse_args():
                         help     = "Maximum primer size.")
     parser.add_argument("--primer_min_tm",
                         type     = int,
-                        default  = 58,
+                        default  = 45, #58,
                         help     = "Minimum primer Tm.")
     parser.add_argument("--primer_opt_tm",
                         type     = int,
@@ -174,7 +180,7 @@ def parse_args():
                         help     = "Optimum primer Tm.")
     parser.add_argument("--primer_max_tm",
                         type     = int,
-                        default  = 62,
+                        default  = 75, #62,
                         help     = "Maximum primer Tm.")
     parser.add_argument("--max_primer_tm_diff",
                         type     = float,
@@ -182,7 +188,7 @@ def parse_args():
                         help     = "Maximum difference between primer pair Tm.")
     parser.add_argument("--primer_gc_min",
                         type     = int,
-                        default  = 50,
+                        default  = 30, #50,
                         help     = "Minimum primer Tm.")
     parser.add_argument("--primer_gc_opt",
                         type     = int,
@@ -190,7 +196,7 @@ def parse_args():
                         help     = "Optimum primer Tm.")
     parser.add_argument("--primer_gc_max",
                         type     = int,
-                        default  = 60,
+                        default  = 70,  #60,
                         help     = "Maximum primer Tm.")
 
     parser.add_argument("--adjust_amplicon_size",
@@ -264,8 +270,9 @@ def main():
 
     # User parameters
     target_exons_csv = args.target_exons_csv
-    genome_fasta    = args.genome_fasta
-    gtf_file        = args.gtf_file
+    genome_fasta     = args.genome_fasta
+    gtf_file         = args.gtf_file
+    custom_gtf_file  = args.custom_gtf_file
 
     off_target_fasta = args.off_target_fasta
     blast_db_name    = args.blast_db_name
@@ -353,14 +360,14 @@ def main():
         primer_opt_size = 20      
         primer_max_size = 24
     
-        primer_min_tm = 50
+        primer_min_tm = 45 #50
         primer_opt_tm = 55
-        primer_max_tm = 60
+        primer_max_tm = 70 #60
         max_primer_tm_diff = 5
     
-        primer_gc_min = 40
+        primer_gc_min = 30 #40
         primer_gc_opt = 50
-        primer_gc_max = 65
+        primer_gc_max = 70 #65
     
         sanger_void = 30
 
@@ -426,6 +433,19 @@ def main():
     else:
         pass
 
+    # Add 'chr' to chromosome name if absent
+    gtf["seqname"] = gtf["seqname"].apply(
+        lambda x: f"chr{x}" if not x.startswith("chr") else x)
+    
+    # Load custom GTF of transcripts with the target exon included
+    if custom_gtf_file is not None:
+        custom_gtf = read_gtf(custom_gtf_file).to_pandas()
+        custom_gtf = custom_gtf[custom_gtf.feature.isin(["exon"])]
+        custom_gtf["seqname"] = custom_gtf["seqname"].apply(
+            lambda x: f"chr{x}" if not x.startswith("chr") else x)
+    else:
+        custom_gtf = None
+
     # Start loop per target exon
     primer_df_list = []
     pbar = tqdm(total = len(target_exon_list), position = 0, leave = True)
@@ -451,6 +471,20 @@ def main():
         # Get a list of gene transcript ID
         transcript_id_list = gene_gtf.transcript_id.unique().tolist()
 
+        # If a custom GTF is supplied, get transcripts with the target exon
+        if custom_gtf is not None:
+            custom_transcript_id_list = \
+                custom_gtf.query(f"seqname == '{target_exon['chrom']}' and "
+                                 f"start == {target_exon['start']} and "
+                                 f"end == {target_exon['end']} and "
+                                 f"strand == '{target_exon['strand']}'"
+                                 ).transcript_id.unique().tolist()
+            custom_transcript_df = custom_gtf[
+                custom_gtf.transcript_id.isin(custom_transcript_id_list)
+                ]
+        else:
+            custom_transcript_df = None
+
         # Mark exons that are [1] MANE and [2] constitutive
         # Definition of "constitutive" is the percentage of transcripts with the
         # exon is above the set constitutive_threshold
@@ -475,6 +509,21 @@ def main():
             if constitutive_count/len(transcript_id_list) >= \
                 constitutive_threshold:
                 mane_exons_gtf.loc[index, "constitutive"] = 1
+                # If a custom GTF is supplied, check if the MANE exon
+                # is present in the transcript with the target exon
+                # If MANE exon is absent, treat this MANE exon as 
+                # not constitutive (do not design primers on it)
+                if custom_transcript_df is not None:
+                    check_exon_df = custom_transcript_df.query(
+                        f"start >= {exon_start} and end <= {exon_end}")
+                    # All target exon-containing transcripts
+                    # must have the MANE exon
+                    if len(check_exon_df) != len(custom_transcript_id_list):
+                        mane_exons_gtf.loc[index, "constitutive"] = 0
+                    else:
+                        pass
+                else:
+                    pass
             else:
                 mane_exons_gtf.loc[index, "constitutive"] = 0
 
@@ -484,6 +533,14 @@ def main():
                 Fore.YELLOW + 
                 "Warning: No MANE exon meets the constitutive threshold." +
                 Style.RESET_ALL)
+            if custom_transcript_df is not None:
+                logging.warning(
+                Fore.YELLOW + 
+                "MANE exons may be discarded due to " +
+                "absence in custom GTF transcripts" +
+                Style.RESET_ALL)
+        else:
+            pass
     
         if design_mode == "qPCR":
         # Front set
@@ -535,15 +592,14 @@ def main():
                 logging.info("Designed primer sets:" + Fore.GREEN + 
                              f"{primers_set1['PRIMER_PAIR_NUM_RETURNED']}" + Style.RESET_ALL)
                 if primers_set1['PRIMER_PAIR_NUM_RETURNED'] == 0:
-                    logging.info(f"Primer left explanation: {primers_set1['PRIMER_LEFT_EXPLAIN']}")
-                    logging.info(f"Primer right explanation: {primers_set1['PRIMER_RIGHT_EXPLAIN']}")
-                    logging.info(f"Primer pair explanation: {primers_set1['PRIMER_PAIR_EXPLAIN']}\n")
+                    logging.warning(f"Primer left explanation: {primers_set1['PRIMER_LEFT_EXPLAIN']}")
+                    logging.warning(f"Primer right explanation: {primers_set1['PRIMER_RIGHT_EXPLAIN']}")
+                    logging.warning(f"Primer pair explanation: {primers_set1['PRIMER_PAIR_EXPLAIN']}\n")
                 else:
                     pass
             else:
                 primers_set1 = None
-                logging.warning(
-                    Fore.YELLOW + 
+                logging.warning(Fore.YELLOW + 
                     f"Warning: No constitutive regions selected " +
                     "for right primer design." + Style.RESET_ALL)
             
@@ -612,15 +668,14 @@ def main():
                 logging.info("Designed primer sets:" + Fore.GREEN + 
                              f"{primers_set2['PRIMER_PAIR_NUM_RETURNED']}" + Style.RESET_ALL)
                 if primers_set2['PRIMER_PAIR_NUM_RETURNED'] == 0:
-                    logging.info(f"Primer left explanation: {primers_set2['PRIMER_LEFT_EXPLAIN']}")
-                    logging.info(f"Primer right explanation: {primers_set2['PRIMER_RIGHT_EXPLAIN']}")
-                    logging.info(f"Primer pair explanation: {primers_set2['PRIMER_PAIR_EXPLAIN']}\n")
+                    logging.warning(f"Primer left explanation: {primers_set2['PRIMER_LEFT_EXPLAIN']}")
+                    logging.warning(f"Primer right explanation: {primers_set2['PRIMER_RIGHT_EXPLAIN']}")
+                    logging.warning(f"Primer pair explanation: {primers_set2['PRIMER_PAIR_EXPLAIN']}\n")
                 else:
                     pass
             else:
                 primers_set2 = None
-                logging.warning(
-                    Fore.YELLOW + 
+                logging.warning(Fore.YELLOW + 
                     f"Warning: No constitutive regions selected " +
                     "for left primer design." + Style.RESET_ALL)
 
@@ -672,7 +727,11 @@ def main():
 
             primer_sets = primer_pairs1 + primer_pairs2
 
-        # Splicing PCR
+        # Splicing PCR on MANE transcripts
+        # If the exon_type is non-canonical, the target exon will be inserted 
+        # into the MANE transcript
+        # If the exon_type is canonical, a MANE exon will be selected as the
+        # target exon instead of the supplied exon
         #                   ---->                                      
         # ==========     ==========     =====Target exon=====     ==========
         #                                                           <-----
@@ -685,10 +744,10 @@ def main():
                     [[target_exon["chrom"], target_exon["start"], 
                       target_exon["end"], target_exon["strand"],
                       "noncanonical", 0]],
-                    columns = ["seqname", "start", "end", "strand", "EXON_TYPE",
-                               "constitutive"]
+                    columns = ["seqname", "start", "end", "strand", 
+                               "EXON_TYPE", "constitutive"]
                     )
-    
+
                 # Concatenate with MANE GTF
                 mane_exons_gtf = pd.concat([mane_exons_gtf, target_exon_df], axis = 0)
                 mane_exons_gtf.sort_values(by = ["seqname", "start", "end"],
@@ -712,7 +771,7 @@ def main():
             current_pos = 0
             mane_seq    = ""
             min_target_exon_size = None
-            excluded_regions = []
+            excluded_regions     = []
             primer3_sequence_target = []
             for m_index, _ in mane_exons_gtf.iterrows():
                 chrom = mane_exons_gtf.loc[m_index, "seqname"]
@@ -844,10 +903,10 @@ def main():
         if len(primer_sets) > 0:
             primer_df_list.append(
                 primer_blast(primer_sets, gene_name, target_exon,
-                            total_mismatches_threshold, last_n_mismatches_threshold,
-                            amplicon_max_size, polymerase,
-                            blastdb_dir, blast_db_name, outdir,
-                            delete_xml, threads)
+                             total_mismatches_threshold, last_n_mismatches_threshold,
+                             amplicon_max_size, polymerase,
+                             blastdb_dir, blast_db_name, outdir,
+                             delete_xml, threads)
                 )
         else:
             pass
@@ -858,6 +917,9 @@ def main():
     if len(primer_df_list) > 0:
         primer_df = pd.concat([x for x in primer_df_list if len(x) != 0],
                             axis = 0, ignore_index = True)
+        primer_df["product_size_w_target_exon"]  = primer_df["product_size"]
+        primer_df["product_size_wo_target_exon"] = \
+            primer_df["product_size"] - abs(primer_df["end"] - primer_df["start"]) + 1
         primer_df.to_csv(f"{outdir}/{prefix}.full.tsv", sep = "\t", index = False)
     else:
         logging.error(Fore.RED + 
@@ -884,5 +946,10 @@ def main():
     
     # Export top primers
     top_primer_df.to_csv(f"{outdir}/{prefix}.top.tsv", sep = "\t", index = False)
+
+    logging.info(Fore.GREEN + "Report" + Style.RESET_ALL)
+    logging.info(Fore.GREEN + "------" + Style.RESET_ALL)
+    logging.info(f"{len(top_primer_df)}/{len(target_exon_input_df)} " +
+                 "targets is assigned primer sets")
     
     logging.info("\nComplete")

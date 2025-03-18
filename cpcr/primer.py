@@ -79,7 +79,19 @@ def design_primer_pair(template, ok_regions, target_regions, excluded_regions,
         'PRIMER_OPT_GC_PERCENT': primer_gc_opt,
         'PRIMER_MAX_GC'   : primer_gc_max,
 
-        'PRIMER_NUM_RETURN': 20
+        'PRIMER_NUM_RETURN': 20,
+
+        'PRIMER_MAX_SELF_ANY'     : 8.0,
+        'PRIMER_MAX_SELF_ANY_TH'  : 47.0,
+
+        # Primer3Plus settings for regular wet lab use
+        'PRIMER_MAX_END_STABILITY': 9.0,
+        'PRIMER_MAX_HAIRPIN_TH'   : 47.0,
+        'PRIMER_INTERNAL_MAX_HAIRPIN_TH'         : 47.0,
+        'PRIMER_MAX_TEMPLATE_MISPRIMING'         : 12.0,
+        'PRIMER_MAX_TEMPLATE_MISPRIMING_TH'      : 47.0,
+        'PRIMER_PAIR_MAX_TEMPLATE_MISPRIMING'    : 24.0,
+        'PRIMER_PAIR_MAX_TEMPLATE_MISPRIMING_TH' : 47.0,
     }
 
     # Design primers
